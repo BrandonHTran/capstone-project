@@ -345,7 +345,7 @@ const LoadShift = () => {
 };
 
 const optimizeBattery = (Loadschedule: Schedule[]) => {
-  let capacity = 5000; //grab from database capacitance
+  let capacity = 100000; //grab from database capacitance
   let batchargespeed = 5; //grab from database energyGeneration
   let loadusetimes = [
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -382,7 +382,7 @@ const optimizeBattery = (Loadschedule: Schedule[]) => {
   Loadschedule.forEach((schedule) => {
     if (
       schedule.StartRecur <= today &&
-      schedule.EndRecur >= tomorrow &&
+      schedule.EndRecur > tomorrow &&
       schedule.Dayofweek[day]
     ) {
       let hour = schedule.Start.split(":")[0];
@@ -447,7 +447,7 @@ const optimizeBattery = (Loadschedule: Schedule[]) => {
       isCharging = 1;
     } else {
       if (newSoC < 0.3 * capacity) {
-        // If not within charging times and SoC falls below 20%, charge another 5%
+        // If not within charging times and SoC falls below 30%, charge another 5%
         newSoC = Math.min(
           0.8 * capacity,
           newSoC + (batchargespeed / 100) * capacity
@@ -494,177 +494,14 @@ const optimizeBattery = (Loadschedule: Schedule[]) => {
         endstring = endtime.toString() + ":00";
       }
 
-      const optimizeBattery = (Loadschedule: Schedule[]) => {
-        let capacity = 100000; //grab from database capacitance
-        let batchargespeed = 5; //grab from database energyGeneration
-        let loadusetimes = [
-          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-          0,
-        ]; //Measures how much electricity was used by a load at that hour
+      message = message + startstring + " - " + endstring + "<br>";
 
-        //Grab today's date and tomorrow's date
-        let datdate = new Date();
-        let dateTime = new Date().toISOString();
-        datdate.setDate(datdate.getDate() + 1);
-        let tomorrowTime = datdate.toISOString();
-        let today = dateTime.split("T")[0];
-        let tomorrow = tomorrowTime.split("T")[0];
-        let tomorrowDate = datdate.toDateString().split(" ")[0];
-
-        //Check tomorrow's day
-        let day = -1;
-        if (tomorrowDate == "Sat") {
-          day = 6;
-        } else if (tomorrowDate == "Sun") {
-          day = 0;
-        } else if (tomorrowDate == "Mon") {
-          day = 1;
-        } else if (tomorrowDate == "Tue") {
-          day = 2;
-        } else if (tomorrowDate == "Wed") {
-          day = 3;
-        } else if (tomorrowDate == "Thu") {
-          day = 4;
-        } else if (tomorrowDate == "Fri") {
-          day = 5;
-        }
-
-        //Loop through schedule and find every schedule which is running tomorrow
-        Loadschedule.forEach((schedule) => {
-          if (
-            schedule.StartRecur <= today &&
-            schedule.EndRecur > tomorrow &&
-            schedule.Dayofweek[day]
-          ) {
-            let hour = schedule.Start.split(":")[0];
-            let min = schedule.Start.split(":")[1];
-            let endhour = schedule.End.split(":")[0];
-            let endminute = schedule.End.split(":")[1];
-
-            //Adjustments for first hour (if start not rounded to a xx:00)
-            let difference = 60 - parseInt(min);
-            loadusetimes[parseInt(hour)] =
-              loadusetimes[parseInt(hour)] +
-              (difference / 60) * schedule.loadConsumption;
-            hour = (parseInt(hour) + 1).toString();
-
-            //Until we reach the last hour
-            while (parseInt(hour) < parseInt(endhour)) {
-              loadusetimes[parseInt(hour)] =
-                loadusetimes[parseInt(hour)] + schedule.loadConsumption;
-              hour = (parseInt(hour) + 1).toString();
-            }
-
-            //Adjustments for last hour (if end not rounded to a xx:00)
-            difference = parseInt(endminute);
-            loadusetimes[parseInt(hour)] =
-              loadusetimes[parseInt(hour)] +
-              (difference / 60) * schedule.loadConsumption;
-
-            //Display the values of the array
-            //console.log(loadusetimes)
-          }
-        });
-        //Maria's algorithm here
-        const batterySoC: number[] = new Array(24).fill(0); //battery state of charge
-        const chargingStatus: number[] = new Array(24).fill(0); //charging status
-
-        // Charging schedule
-        const chargingTimes: [number, number][] = [
-          [0, 7],
-          [19, 24],
-        ];
-
-        // Iterate over each hour and calculate battery state of charge
-        for (let hour = 0; hour < 24; hour++) {
-          const withinChargingTimes = chargingTimes.some(([start, end]) => {
-            // Check if the current hour falls within the charging times
-            return (
-              (hour >= start && hour < end) ||
-              (start > end && (hour >= start || hour < end))
-            );
-          });
-          // Calculate energy consumed by loads at this hour
-          let energyConsumed = loadusetimes[hour] || 0; // Calculate energy consumed by loads at this hour
-
-          let newSoC = batterySoC[(hour === 0 ? 24 : hour) - 1]; // Update battery state of charge for this hour & initialize with previous SoC
-          let isCharging = 0;
-
-          if (withinChargingTimes) {
-            newSoC = Math.min(
-              0.8 * capacity,
-              newSoC + (batchargespeed / 100) * capacity
-            ); // Charge to 80% if within charging times
-            isCharging = 1;
-          } else {
-            if (newSoC < 0.3 * capacity) {
-              // If not within charging times and SoC falls below 30%, charge another 5%
-              newSoC = Math.min(
-                0.8 * capacity,
-                newSoC + (batchargespeed / 100) * capacity
-              );
-              isCharging = 1;
-            }
-          }
-          newSoC = Math.max(0, newSoC - energyConsumed); // Subtract energy consumed
-          newSoC = Math.min(0.8 * capacity, Math.max(0.2 * capacity, newSoC)); // Ensure battery SoC stays between 20% to 80%
-
-          // Update battery state of charge for this hour
-          batterySoC[hour] = newSoC;
-          chargingStatus[hour] = isCharging;
-        }
-
-        //Code for adding the new schedules for charging
-        let x = 0;
-        let starttime = -1;
-        let endtime = -1;
-        let start = true; //Start not set yet
-        let message = "Charge Schedule: <br>";
-        while (x < 24) {
-          if (chargingStatus[x] == 1 && x != 23) {
-            //Check if charge status is true
-            if (starttime == -1 && start) {
-              //Check if we set a start time yet
-
-              starttime = x; //Set starttime
-              start = false; //Set state = set
-            }
-          } else if (!start || x == 23) {
-            //If start was set and charging status was false, we have a charge cycle
-            endtime = x;
-            let startstring = "";
-            let endstring = "";
-            if (starttime < 10) {
-              startstring = "0" + starttime.toString() + ":00";
-            } else {
-              startstring = starttime.toString() + ":00";
-            }
-            if (endtime < 10) {
-              endstring = "0" + endtime.toString() + ":00";
-            } else {
-              endstring = endtime.toString() + ":00";
-            }
-
-            message = message + startstring + " - " + endstring + "<br>";
-
-            //Reset variables
-            starttime = -1;
-            endtime = -1;
-            start = true;
-          }
-          x = x + 1;
-        }
-        (
-          document.getElementById("optimizedisplay") as HTMLDivElement
-        ).innerHTML = message;
-
-        //Reset variables
-        starttime = -1;
-        endtime = -1;
-        start = true;
-      };
-      x = x + 1;
+      //Reset variables
+      starttime = -1;
+      endtime = -1;
+      start = true;
     }
+    x = x + 1;
   }
   (document.getElementById("optimizedisplay") as HTMLDivElement).innerHTML =
     message;
